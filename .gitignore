@@ -1,6 +1,8 @@
 # Environment variables
 .env
 
+promptfoo-tests/
+
 # IDE specific files (IntelliJ / PyCharm)
 .idea/
 
