@@ -1,6 +1,8 @@
 import re
+
+import nullable
 from sqlalchemy import (
-    Column, String, Integer, MetaData, Table, inspect as sqla_inspect
+    Column, String, Integer, MetaData, Table, inspect as sqla_inspect, NotNullable
 )
 from app.models.database import Base, engine
 
@@ -53,6 +55,34 @@ def get_user_role_data_tablename(client_name: str,system_name:str) -> str:
     return f"Z_FUE_{client}_{system}_USER_ROLE_DATA"
 
 
+def get_role_lic_summary_data_tablename(client_name: str, system_name: str) -> str:
+    client = clean_client_name(client_name)
+    system = clean_system_name(system_name)
+    return f"Z_FUE_{client}_{system}_ROLE_LIC_SUMMARY"
+
+def get_user_role_mapping_data_tablename(client_name: str, system_name: str) -> str:
+    client = clean_client_name(client_name)
+    system = clean_system_name(system_name)
+    return f"Z_FUE_{client}_{system}_USER_ROLE_MAPPING"
+
+
+def get_role_obj_lic_sim_tablename(client_name: str, system_name: str) -> str:
+    """Generate table name for role object license simulation data."""
+    client = clean_client_name(client_name)
+    system = clean_system_name(system_name)
+    return f"Z_FUE_{client}_{system}_ROLE_OBJ_LIC_SIM"
+
+def get_auth_obj_field_lic_data_tablename(client_name: str, system_name: str) -> str:
+    """Generate table name for role object license simulation data."""
+    client = clean_client_name(client_name)
+    system = clean_system_name(system_name)
+    return f"Z_FUE_{client}_{system}_AUTH_OBJ_FIELD_LIC_DATA"
+
+def get_simulation_result_tablename(client_name: str, system_name: str) -> str:
+    """Generate table name for role object license simulation data."""
+    client = clean_client_name(client_name)
+    system = clean_system_name(system_name)
+    return f"Z_FUE_{client}_{system}_SIMULATION_RESULT_DATA"
 
 class _BaseLiceData:
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
@@ -68,6 +98,7 @@ class _BaseLiceData:
     AGR_RATIO = Column(String)
     AGR_OBJECTS = Column(String)
     AGR_USERS = Column(String)
+
 
 class _BaseAuthData:
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
@@ -121,7 +152,92 @@ class _UserRoleData:
     ROLE= Column(String, nullable=False, index=True)
     USER_NAME=Column(String, nullable=False)
 
+class _RoleLicSummary:
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    ROLE=Column(String, nullable=False, index=True)
+    ROLE_DESCRIPTION=Column(String)
+    TARGET_CLASSIFICATION=Column(String)
+    RATIO=Column(String)
+    OBJECTS=Column(String)
+    COUNT=Column(String)
+    USERS=Column(String)
+
+class UserRoleMapping:
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    AGR_NAME=Column(String, nullable=False, index=True)
+    UNAME=Column(String)
+
+
+class _BaseRoleObjLicSimData:
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    AGR_NAME = Column(String, index=True)
+    OBJECT = Column(String, nullable=False)
+    TTEXT = Column(String)
+    FIELD = Column(String)
+    LOW = Column(String)
+    HIGH = Column(String)
+    CLASSIF_S4 = Column(String)
+    OPERATION = Column(String)  # New column for operation type
+    NEW_VALUE = Column(String)  # New column for new value
+    NEW_SIM_LICE = Column(String)  # New column for new simulation license
+
+class _AuthObjFieldLicData:
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    AUTHORIZATION_OBJECT = Column(String, index=True)
+    FIELD = Column(String, nullable=False)
+    ACTIVITIY = Column(String)
+    TEXT = Column(String)
+    LICENSE = Column(String)
+    UI_TEXT= Column(String)
+
+class _SimResultData:
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    SIMULATION_RUN_ID = Column(Integer, index=True)
+    TIMESTAMP = Column(String, index=True)
+    CLIENT_NAME=Column(String)
+    SYSTEM_NAME=Column(String)
+    FUE_REQUIRED =Column(String)
+    ROLES_CHANGED=Column(String)
+    OBJECT= Column(String)
+    FIELD= Column(String)
+    VALUE_LOW= Column(String)
+    VALUE_HIGH= Column(String)
+    OPERATION= Column(String)
+    PREV_LICENSE=Column(String)
+    CURRENT_LICENSE=Column(String)
+
+
+
+
+
 _dynamic_models_cache = {}
+
+
+def create_role_lic_summary_data_model(client_name: str, system_name: str):
+    table_name = get_role_lic_summary_data_tablename(client_name, system_name)
+    if table_name in _dynamic_models_cache:
+        return _dynamic_models_cache[table_name]
+
+    DynamicRoleLicSummaryModel = type(
+        f"Z_FUE_{clean_client_name(client_name)}_{clean_system_name(system_name)}RoleLicSummary",
+        (_RoleLicSummary, Base),
+        {"__tablename__": table_name, "__table_args__": {'extend_existing': True}}
+    )
+    _dynamic_models_cache[table_name] = DynamicRoleLicSummaryModel
+    return DynamicRoleLicSummaryModel
+
+def create_user_role_mapping_data_model(client_name: str, system_name: str):
+    table_name = get_user_role_mapping_data_tablename(client_name, system_name)
+    if table_name in _dynamic_models_cache:
+        return _dynamic_models_cache[table_name]
+
+    DynamicUserRoleMappingModel = type(
+        f"Z_FUE_{clean_client_name(client_name)}_{clean_system_name(system_name)}UserRoleMapping",
+        (UserRoleMapping, Base),
+        {"__tablename__": table_name, "__table_args__": {'extend_existing': True}}
+    )
+    _dynamic_models_cache[table_name] = DynamicUserRoleMappingModel
+    return DynamicUserRoleMappingModel
 
 def create_lice_data_model(client_name: str,system_name:str):
     table_name = get_lice_data_tablename(client_name,system_name)
@@ -200,6 +316,55 @@ def create_user_role_data(client_name: str,system_name:str):
     )
     _dynamic_models_cache[table_name] = DynamicUserRoleDataModel
     return DynamicUserRoleDataModel
+
+
+def create_role_obj_lic_sim_model(client_name: str, system_name: str):
+    """Create dynamic model for role object license simulation data."""
+    table_name = get_role_obj_lic_sim_tablename(client_name, system_name)
+
+    if table_name in _dynamic_models_cache:
+        return _dynamic_models_cache[table_name]
+
+    DynamicRoleObjLicSimModel = type(
+        f"Z_FUE_{clean_client_name(client_name)}_{clean_system_name(system_name)}RoleObjLicSim",
+        (_BaseRoleObjLicSimData, Base),
+        {"__tablename__": table_name, "__table_args__": {'extend_existing': True}}
+    )
+
+    _dynamic_models_cache[table_name] = DynamicRoleObjLicSimModel
+    return DynamicRoleObjLicSimModel
+
+def create_auth_obj_field_lic_data(client_name: str, system_name: str):
+    """Create dynamic model for role object license simulation data."""
+    table_name = get_auth_obj_field_lic_data_tablename(client_name, system_name)
+
+    if table_name in _dynamic_models_cache:
+        return _dynamic_models_cache[table_name]
+
+    DynamicAuthObjFieldLicData = type(
+        f"Z_FUE_{clean_client_name(client_name)}_{clean_system_name(system_name)}AuthObjFieldLicData",
+        (_AuthObjFieldLicData, Base),
+        {"__tablename__": table_name, "__table_args__": {'extend_existing': True}}
+    )
+
+    _dynamic_models_cache[table_name] = DynamicAuthObjFieldLicData
+    return DynamicAuthObjFieldLicData
+
+
+
+def create_simulation_result_data(client_name: str, system_name: str):
+    """Create dynamic model for role object license simulation data."""
+    table_name = get_simulation_result_tablename(client_name, system_name)
+
+    if table_name in _dynamic_models_cache:
+        return _dynamic_models_cache[table_name]
+    DynamicSimResultData = type(
+        f"Z_FUE_{clean_client_name(client_name)}_{clean_system_name(system_name)}AuthObjFieldLicData",
+        (_SimResultData, Base),
+        {"__tablename__": table_name, "__table_args__": {'extend_existing': True}}
+    )
+    _dynamic_models_cache[table_name] = DynamicSimResultData
+    return DynamicSimResultData
 
 def ensure_table_exists(db_engine, model_class):
     inspector = sqla_inspect(db_engine)

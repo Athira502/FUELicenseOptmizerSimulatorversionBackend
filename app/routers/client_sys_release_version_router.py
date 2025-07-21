@@ -17,7 +17,8 @@ from app.models.dynamic_models import (
     get_role_fiori_data_tablename,
     get_role_master_derived_data_tablename,
     get_user_data_tablename,
-    get_user_role_data_tablename,
+    get_user_role_data_tablename, get_role_lic_summary_data_tablename, get_user_role_mapping_data_tablename,
+    get_role_obj_lic_sim_tablename, get_auth_obj_field_lic_data_tablename, get_simulation_result_tablename,
 )
 
 router = APIRouter(
@@ -60,6 +61,11 @@ async def get_tables_for_client_system(client_name: str, system_name: str):
         get_role_master_derived_data_tablename(client_name, system_name),
         get_user_data_tablename(client_name, system_name),
         get_user_role_data_tablename(client_name, system_name),
+        get_role_lic_summary_data_tablename(client_name, system_name),
+        get_user_role_mapping_data_tablename(client_name, system_name),
+        get_role_obj_lic_sim_tablename(client_name, system_name),
+        get_auth_obj_field_lic_data_tablename(client_name, system_name),
+        get_simulation_result_tablename(client_name, system_name)
     ]
     inspector = sqla_inspect(engine)
     existing_tables = inspector.get_table_names()

@@ -4,7 +4,7 @@ from typing import Optional, List, Dict, Any
 from app.core.logger import logger
 from sqlalchemy import func, cast, Integer, inspect as sqla_inspect
 from app.models.database import engine
-from app.models.dynamic_models import  create_lice_data_model, create_auth_data_model
+from app.models.dynamic_models import create_lice_data_model, create_auth_data_model, create_role_fiori_data_model
 from app.models.request_array import RequestArray
 from app.models.role_lic_re_results import LicenseOptimizationResult
 from app.routers.data_loader_router import create_table
@@ -46,6 +46,8 @@ async def optimize_license_logic(
     try:
         _BaseLiceData = create_lice_data_model(client_name, system_id)
         _BaseAuthData = create_auth_data_model(client_name, system_id)
+        # newly added
+        _BaseFioriData = create_role_fiori_data_model(client_name, system_id)
 
         inspector = sqla_inspect(engine)
         if not inspector.has_table(_BaseLiceData.__tablename__):
@@ -56,6 +58,11 @@ async def optimize_license_logic(
             logger.error(f"Authorization data table not found for client '{client_name}'. Load data first.")
             return {"error": f"Authorization data table not found for client '{client_name}'. Load data first.",
                     "status_code": 404}
+        # newly added
+        fiori_table_exists = inspector.has_table(_BaseFioriData.__tablename__)
+        if not fiori_table_exists:
+            logger.warning(f"Fiori data table not found for client '{client_name}'. Continuing without Fiori data.")
+
     except Exception as e:
         print(f"Error getting dynamic models for client '{client_name}': {e}")
         logger.error(f"Error getting dynamic models for client '{client_name}': {e}", exc_info=True)
@@ -143,11 +150,49 @@ async def optimize_license_logic(
 
             transaction_codes = sorted([t.AUTH_VALUE_LOW for t in tcodes])
 
+            # NEW: Get Fiori apps data for the role
+            fiori_apps = []
+            if fiori_table_exists:
+                try:
+                    fiori_query = db.query(_BaseFioriData).filter(
+                        _BaseFioriData.ROLE == role
+                    ).all()
+
+                    # Group by app (TITLE_SUBTITLE_INFORMATION) and collect actions
+                    fiori_apps_dict = {}
+                    for fiori_record in fiori_query:
+                        app_name = fiori_record.TITLE_SUBTITLE_INFORMATION
+                        action = fiori_record.ACTION
+
+                        if app_name and app_name.strip():  # Only if app name is not empty
+                            if app_name not in fiori_apps_dict:
+                                fiori_apps_dict[app_name] = {"app": app_name, "actions": []}
+
+                            if action and action.strip() and action not in fiori_apps_dict[app_name]["actions"]:
+                                fiori_apps_dict[app_name]["actions"].append(action)
+
+                    # Convert dict to list
+                    fiori_apps = list(fiori_apps_dict.values())
+                    logger.debug(f"Found {len(fiori_apps)} Fiori apps for role '{role}'")
+
+                except Exception as fiori_e:
+                    logger.warning(f"Error fetching Fiori data for role '{role}': {fiori_e}", exc_info=True)
+                    fiori_apps = []
+
+            # UPDATED: Include Fiori apps in the role JSON
             role_json = {
-                "role": role, "currentLicense": target_license,
+                "role": role,
+                "currentLicense": target_license,
                 "authorizationObjects": authorization_objects,
-                "transactionCodes": transaction_codes
+                "transactionCodes": transaction_codes,
+                "fioriApps": fiori_apps  # NEW: Added Fiori apps
             }
+
+            # role_json = {
+            #     "role": role, "currentLicense": target_license,
+            #     "authorizationObjects": authorization_objects,
+            #     "transactionCodes": transaction_codes
+            # }
             prompt = f"""
 I’m optimizing SAP FUE license consumption for an SAP role.
 Client: {client_name}

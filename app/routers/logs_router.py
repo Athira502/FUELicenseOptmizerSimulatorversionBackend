@@ -1,7 +1,14 @@
 import os
-from fastapi import APIRouter, HTTPException, Query
-import re # Import the regular expression module
+from datetime import datetime, timedelta
+
+from fastapi import APIRouter, HTTPException, Query, Depends
+import re
 from fastapi.responses import FileResponse
+from starlette import status
+from sqlalchemy.orm import Session
+from app.models.database import get_db
+from app.models.log_data import logData
+
 router = APIRouter(prefix="/logs", tags=["Logs"])
 
 LOG_DIR = "logs"
@@ -42,34 +49,59 @@ def get_logs(filename: str = Query(None)):
 
 @router.get("/download/{filename}")
 async def download_log_file(filename: str):
-    """
-    Download the content of a specific log file.
-    """
-    # Sanitize filename to prevent directory traversal attacks
+
     sanitized_filename = filename.strip()
-    # Basic validation against common path traversal indicators
     if not sanitized_filename or '/' in sanitized_filename or '\\' in sanitized_filename or '..' in sanitized_filename:
         raise HTTPException(status_code=400, detail="Invalid filename characters detected.")
 
-    # Optional: Re-verify if the filename matches your expected pattern for extra security
     if not SPECIFIC_LOG_PATTERN.match(sanitized_filename):
         raise HTTPException(status_code=400, detail="Invalid log file format or filename.")
 
     file_path = os.path.join(LOG_DIR, sanitized_filename)
 
-    # Check if the file exists and is actually a file (not a directory)
     if not os.path.isfile(file_path):
         raise HTTPException(status_code=404, detail="Log file not found.")
 
     try:
-        # Use FileResponse to directly stream the file content
-        # It handles setting Content-Disposition header (for download) and Content-Type automatically.
+
         return FileResponse(
             path=file_path,
-            filename=sanitized_filename, # This is crucial for the browser to suggest the correct filename
-            media_type="text/plain"      # Explicitly set the media type for text files
+            filename=sanitized_filename,
+            media_type="text/plain"
         )
 
     except Exception as e:
-        # Catch any other unexpected errors during file serving
         raise HTTPException(status_code=500, detail=f"Error serving file: {str(e)}")
+
+
+
+@router.delete("/delete-old-db-logs/")
+def delete_old_db_logs(
+    days: int = Query(..., ge=1, description="Number of days to keep database logs. Records older than this will be deleted."),
+    db: Session = Depends(get_db)
+):
+    if days <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Number of days must be a positive integer."
+        )
+
+
+
+    cutoff_datetime = datetime.now() - timedelta(days=days)
+
+    try:
+        deleted_count = db.query(logData).filter(
+            logData.TIMESTAMP < cutoff_datetime
+        ).delete(synchronize_session=False)
+
+        db.commit()
+
+        if deleted_count == 0:
+            return {"message": f"No database log records older than {days} days found."}
+        else:
+            return {"message": f"Successfully deleted {deleted_count} database log records older than {days} days ."}
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error deleting database log records: {str(e)}")

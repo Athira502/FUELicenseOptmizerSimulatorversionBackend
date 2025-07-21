@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import data_loader_router, client_sys_release_version_router, license_optimizer_router, logs_router, \
-    user_group_router
+    user_group_router, simulator_router, fue_calculation_router, example_router
 
 app = FastAPI(
     title="SAP License Optimizer API",
@@ -10,6 +10,9 @@ app = FastAPI(
 )
 origins = [
     "http://localhost:8080",
+    "http://localhost:8081",
+    "http://localhost:3000",
+    "http://localhost:5173",
 ]
 
 app.add_middleware(
@@ -35,6 +38,10 @@ app.include_router(client_sys_release_version_router.router)
 app.include_router(license_optimizer_router.router)
 app.include_router(logs_router.router)
 app.include_router(user_group_router.router)
+app.include_router(simulator_router.router)
+app.include_router(fue_calculation_router.router)
+app.include_router(example_router.router)
+
 
 @app.get("/", tags=["Root"])
 async def read_root():
