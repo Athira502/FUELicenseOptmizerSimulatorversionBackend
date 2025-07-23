@@ -6,7 +6,7 @@ class LicenseOptimizationResult(Base):
     __tablename__ = "Z_FUE_OPT_RESULTS"
 
     RESULT_ID = Column(Integer, primary_key=True, autoincrement=True)
-    REQ_ID= Column(Integer, ForeignKey("Z_FUE_OPT_REQUESTS.req_id"), nullable=False)
+    REQ_ID= Column(String, ForeignKey("Z_FUE_OPT_REQUESTS.req_id"), nullable=False)
     ROLE_ID= Column(String,nullable=False)
     ROLE_DESCRIPTION= Column(String,nullable=False)
     AUTHORIZATION_OBJECT=Column(String,nullable=False)

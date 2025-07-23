@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from datetime import datetime
 
 class RequestArraySchema(BaseModel):
-    req_id: int
+    req_id: str
     TIMESTAMP: datetime
     CLIENT_NAME: str
     SYSTEM_NAME: str

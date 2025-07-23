@@ -21,7 +21,7 @@ async def optimize_license_endpoint(
     client_name: str = Query(..., description="Client identifier (e.g., 'Fujifilm', 'ClientB')"),
     system_id:str = Query(..., description="System identifier (e.g., 'S4H', 'ClientB')"),
     ratio_threshold: Optional[int] = Query(None, description="Max AGR_RATIO value (first part) to include"),
-    validation_type: str = Query("role", description="Validation mode ('role' or 'user')"),
+    # validation_type: str = Query("role", description="Validation mode ('role' or 'user')"),
     target_license: str = Query("GB Advanced Use", description="Target license type to analyze"),
     sap_system_info: str = Query("S4 HANA OnPremise 1909 Initial Support Pack", description="SAP system info for context"),
     role_names: Optional[List[str]] = Query(None, description="List of specific roles to analyze (optional)"),
@@ -50,7 +50,7 @@ async def optimize_license_endpoint(
         client_name=client_name,
         system_id=system_id,
         ratio_threshold=ratio_threshold,
-        validation_type=validation_type,
+        # validation_type=validation_type,
         target_license=target_license,
         sap_system_info=sap_system_info,
         role_names=role_names
@@ -75,7 +75,7 @@ def get_all_requests(db: Session = Depends(get_db)):
 
 
 @router.get("/results/{req_id}", response_model=List[LicenseOptimizationResultSchema])
-def get_results_by_request_id(req_id: int, db: Session = Depends(get_db)):
+def get_results_by_request_id(req_id: str, db: Session = Depends(get_db)):
     return db.query(LicenseOptimizationResult).filter(
         LicenseOptimizationResult.REQ_ID == req_id
     ).all()

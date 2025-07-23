@@ -1,4 +1,6 @@
 import json
+import uuid
+
 from sqlalchemy.orm import Session
 from typing import Optional, List, Dict, Any
 from app.core.logger import logger
@@ -31,7 +33,6 @@ async def optimize_license_logic(
         db: Session,
         client_name: str,
         system_id: str,
-        validation_type: str,
         ratio_threshold: Optional[int] = None,
         target_license: str = "GB Advanced Use",
         sap_system_info: str = "S4 HANA OnPremise 2021 Support Pack 01, Basis Release 751",
@@ -74,8 +75,10 @@ async def optimize_license_logic(
 
     RequestArray1 = RequestArray
     LicenseOptimizationResult1 = LicenseOptimizationResult
+    request_id = f"REQ-{uuid.uuid4()}"
 
     new_request = RequestArray1(
+        req_id=request_id,
         CLIENT_NAME=client_name,
         SYSTEM_NAME=system_id,
         STATUS="IN_PROGRESS"
@@ -150,7 +153,6 @@ async def optimize_license_logic(
 
             transaction_codes = sorted([t.AUTH_VALUE_LOW for t in tcodes])
 
-            # NEW: Get Fiori apps data for the role
             fiori_apps = []
             if fiori_table_exists:
                 try:

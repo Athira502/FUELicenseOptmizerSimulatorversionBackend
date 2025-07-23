@@ -1,4 +1,5 @@
 import re
+import uuid
 
 import nullable
 from sqlalchemy import (
@@ -192,7 +193,7 @@ class _AuthObjFieldLicData:
 
 class _SimResultData:
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    SIMULATION_RUN_ID = Column(Integer, index=True)
+    SIMULATION_RUN_ID = Column(String, index=True, default=lambda: f"SIM_REQ-{uuid.uuid4()}")
     TIMESTAMP = Column(String, index=True)
     CLIENT_NAME=Column(String)
     SYSTEM_NAME=Column(String)

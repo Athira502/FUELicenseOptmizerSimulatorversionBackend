@@ -1,4 +1,4 @@
-
+import uuid
 from typing import Dict, Any
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -10,6 +10,8 @@ from app.models.dynamic_models import (
     create_user_role_mapping_data_model
 )
 from datetime import datetime
+
+from app.routers.data_loader_router import create_table
 
 router = APIRouter(
     prefix="/simulation_result",
@@ -57,6 +59,8 @@ async def get_simulation_license_classification_pivot_table(
     try:
         DynamicRoleObjLicSimModel = create_role_obj_lic_sim_model(client_name, system_name)
         DynamicUserRoleMappingModel = create_user_role_mapping_data_model(client_name, system_name)
+        await create_table(db.bind, DynamicRoleObjLicSimModel)
+        await create_table(db.bind, DynamicUserRoleMappingModel)
 
         table_name_sim_model = DynamicRoleObjLicSimModel.__tablename__
         table_name_mapping = DynamicUserRoleMappingModel.__tablename__
@@ -189,7 +193,7 @@ async def run_simulation(
         await create_table(db.bind, DynamicSimulationResultModel)
 
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        simulation_run_id = int(datetime.now().timestamp())
+        simulation_run_id =f"SIM_REQ-{uuid.uuid4()}"
         fue_summary = simulation_results.get("fue_summary", {})
         total_fue_required = fue_summary.get("Total FUE Required", 0)
 
@@ -306,10 +310,10 @@ async def get_simulation_results(
 
     try:
         DynamicSimulationResultModel = create_simulation_result_data(client_name, system_name)
+        await create_table(db.bind, DynamicSimulationResultModel)
 
         results = db.query(DynamicSimulationResultModel).order_by(
-            DynamicSimulationResultModel.SIMULATION_RUN_ID.desc(),
-            DynamicSimulationResultModel.TIMESTAMP.desc()
+            DynamicSimulationResultModel.TIMESTAMP.desc(),DynamicSimulationResultModel.SIMULATION_RUN_ID.desc()
         ).all()
 
         if not results:

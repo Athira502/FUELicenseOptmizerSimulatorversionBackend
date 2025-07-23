@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 class LicenseOptimizationResultSchema(BaseModel):
     RESULT_ID: int
-    REQ_ID: int
+    REQ_ID: str
     ROLE_ID: str
     ROLE_DESCRIPTION: str
     AUTHORIZATION_OBJECT: str
