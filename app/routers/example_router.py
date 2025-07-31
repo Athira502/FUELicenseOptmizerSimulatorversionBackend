@@ -166,6 +166,30 @@ SELECT * FROM fue_summary;
         logger.error(f"Error generating pivot table: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error generating pivot table: {str(e)}")
 
+def get_next_simulation_id_for_table(db: Session, DynamicSimulationResultModel) -> str:
+    try:
+        # Get the highest existing simulation ID from the current table
+        latest_record = db.query(DynamicSimulationResultModel.SIMULATION_RUN_ID).filter(
+            DynamicSimulationResultModel.SIMULATION_RUN_ID.like('SIM%')
+        ).order_by(DynamicSimulationResultModel.SIMULATION_RUN_ID.desc()).first()
+
+        if latest_record and latest_record[0].startswith('SIM'):
+            try:
+                # Extract the number part and increment
+                current_num = int(latest_record[0][3:])  # Remove 'SIM' prefix
+                next_num = current_num + 1
+            except ValueError:
+                # If parsing fails, start from 100000
+                next_num = 100000
+        else:
+            # No existing records, start from 100000
+            next_num = 100000
+
+        return f"SIM{next_num}"
+
+    except Exception as e:
+        # Fallback to default if any error occurs
+        return "SIM100000"
 
 
 @router.post("/run-simulation/")
@@ -193,7 +217,9 @@ async def run_simulation(
         await create_table(db.bind, DynamicSimulationResultModel)
 
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        simulation_run_id =f"SIM_REQ-{uuid.uuid4()}"
+        simulation_run_id = get_next_simulation_id_for_table(db,DynamicSimulationResultModel)
+
+        # simulation_run_id =f"SIM_REQ-{uuid.uuid4()}"
         fue_summary = simulation_results.get("fue_summary", {})
         total_fue_required = fue_summary.get("Total FUE Required", 0)
 
