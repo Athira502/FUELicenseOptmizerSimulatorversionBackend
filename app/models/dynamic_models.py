@@ -172,6 +172,7 @@ class UserRoleMapping:
 class _BaseRoleObjLicSimData:
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     AGR_NAME = Column(String, index=True)
+    AGR_TEXT = Column(String)  # Add this line for role description
     OBJECT = Column(String, nullable=False)
     TTEXT = Column(String)
     FIELD = Column(String)
@@ -199,6 +200,7 @@ class _SimResultData:
     SYSTEM_NAME=Column(String)
     FUE_REQUIRED =Column(String)
     ROLES_CHANGED=Column(String)
+    ROLE_DESCRIPTION = Column(String)  # Add this line
     OBJECT= Column(String)
     FIELD= Column(String)
     VALUE_LOW= Column(String)

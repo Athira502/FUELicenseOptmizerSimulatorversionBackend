@@ -770,6 +770,7 @@ async def create_and_populate_role_obj_lic_sim_table(
         for source_record in source_records:
             sim_record = TargetSimModel(
                 AGR_NAME=source_record.AGR_NAME,
+                AGR_TEXT=source_record.AGR_TEXT,
                 OBJECT=source_record.OBJECT,
                 TTEXT=source_record.TTEXT,
                 FIELD=source_record.FIELD,

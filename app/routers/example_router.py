@@ -267,6 +267,7 @@ async def run_simulation(
         saved_changes = 0
         for role_change_record in changed_roles_records:
             role_name = role_change_record.AGR_NAME
+            role_description = role_change_record.AGR_TEXT
 
             derived_prev_license = most_restrictive_prev_licenses.get(role_name)
             derived_current_license = most_restrictive_current_licenses.get(role_name)
@@ -278,6 +279,7 @@ async def run_simulation(
                 CLIENT_NAME=client_name,
                 SYSTEM_NAME=system_name,
                 ROLES_CHANGED=role_name,
+                ROLE_DESCRIPTION=role_description,
                 OBJECT=role_change_record.OBJECT,
                 FIELD=role_change_record.FIELD,
                 VALUE_LOW=role_change_record.LOW,
@@ -371,6 +373,7 @@ async def get_simulation_results(
             else:
                 simulation_runs[sim_run_id]["changes"].append({
                     "role": result.ROLES_CHANGED,
+                    "role_description": result.ROLE_DESCRIPTION,  # Add this line
                     "object": result.OBJECT,
                     "field": result.FIELD,
                     "value_low": result.VALUE_LOW,
