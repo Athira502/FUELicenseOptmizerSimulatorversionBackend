@@ -8,7 +8,7 @@ from sqlalchemy.sql import text
 from fastapi.responses import StreamingResponse
 import pandas as pd
 from io import StringIO
-from app.core.logger import logger
+from app.core.logger import setup_logger, get_daily_log_filename
 from app.models.database import get_db, engine, Base
 from app.models.client_sys_release_version import clientSysReleaseData
 from app.models.dynamic_models import (
@@ -25,6 +25,7 @@ router = APIRouter(
     prefix="/manage-data",
     tags=["Manage Data"]
 )
+logger = setup_logger("app_logger")
 
 async def table_exists(db_engine, table_name: str) -> bool:
     """Checks if a table exists in the database."""
@@ -33,9 +34,11 @@ async def table_exists(db_engine, table_name: str) -> bool:
 
 @router.get("/clients", response_model=List[Dict[str, str]])
 async def fetch_client_data(db: Session = Depends(get_db)):
+    logger.debug("Starting to fetch unique client names from the database.")
     """Fetches unique client names."""
     try:
         clients = db.query(clientSysReleaseData.CLIENT_NAME).distinct().all()
+        logger.info(f"Successfully fetched unique client names.")
         return [{"client_name": client.CLIENT_NAME} for client in clients]
     except Exception as e:
         logger.error(f"Error fetching client names: {e}")
@@ -43,9 +46,11 @@ async def fetch_client_data(db: Session = Depends(get_db)):
 
 @router.get("/systems/{client_name}", response_model=List[Dict[str, str]])
 async def fetch_systems_by_client(client_name: str, db: Session = Depends(get_db)):
+    logger.debug("Starting to fetch unique system names  for the client from the database.")
     """Fetches unique system names for a given client."""
     try:
         systems = db.query(clientSysReleaseData.SYSTEM_NAME).filter(clientSysReleaseData.CLIENT_NAME == client_name).distinct().all()
+        logger.info(f"Successfully fetched unique system names for the client {client_name}.")
         return [{"system_name": system.SYSTEM_NAME} for system in systems]
     except Exception as e:
         logger.error(f"Error fetching system names for client {client_name}: {e}")
@@ -53,6 +58,8 @@ async def fetch_systems_by_client(client_name: str, db: Session = Depends(get_db
 
 @router.get("/tables/{client_name}/{system_name}", response_model=List[str])
 async def get_tables_for_client_system(client_name: str, system_name: str):
+    logger.debug("Starting to tables for given  system nameand client from the database.")
+
     """Returns a list of existing table names for a given client and system."""
     potential_table_names = [
         get_lice_data_tablename(client_name, system_name),
@@ -69,6 +76,7 @@ async def get_tables_for_client_system(client_name: str, system_name: str):
     ]
     inspector = sqla_inspect(engine)
     existing_tables = inspector.get_table_names()
+    logger.info(f"Successfully fetched tables {existing_tables} for client: {client_name} and system: {system_name}.")
     return [table for table in potential_table_names if table in existing_tables]
 
 @router.get("/download/{client_name}/{system_name}/{table_name}")
@@ -124,6 +132,7 @@ async def truncate_table(client_name: str, system_name: str, table_name: str, db
         query = text(f'DROP TABLE public."{table_name}"')
         db.execute(query)
         db.commit()
+        logger.info(f"Table '{table_name}' deleted successfully")
         return JSONResponse(content={"message": f"Table '{table_name}' deleted successfully"}, status_code=200)
     except Exception as e:
         logger.error(f"Error deleting table {table_name}: {e}")

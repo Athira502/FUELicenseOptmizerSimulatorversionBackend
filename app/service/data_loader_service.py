@@ -2,7 +2,7 @@ import xml.etree.ElementTree as ET
 import csv
 from io import BytesIO
 from sqlalchemy.orm import Session
-from app.core.logger import logger
+from app.core.logger import setup_logger, get_daily_log_filename
 from app.models.dynamic_models import (
     create_lice_data_model,
     create_auth_data_model,
@@ -11,14 +11,13 @@ from app.models.dynamic_models import (
     create_auth_obj_field_lic_data
 )
 from app.models.database import engine
-
+logger = setup_logger("app_logger")
 class DataLoaderError(Exception):
     pass
 
 async def load_lice_data_from_xml_upload(db: Session, xml_file, client_name: str, system_name: str):
     if not xml_file:
         logger.info(f"Skipping XML data load for client: {client_name}, system: {system_name} as no file was provided.")
-        print(f"Skipping XML data load for client: {client_name}, system: {system_name} as no file was provided.")
         return {"message": "No XML file provided, skipping load.", "table_name": None, "records_loaded": 0}
 
     logger.info(f"Starting XML data load for client: {client_name}, system: {system_name}")
@@ -26,6 +25,7 @@ async def load_lice_data_from_xml_upload(db: Session, xml_file, client_name: str
     DynamicLiceModel = create_lice_data_model(client_name, system_name)
     table_name = DynamicLiceModel.__tablename__
     ensure_table_exists(engine, DynamicLiceModel)
+    logger.debug(f"Dynamic model and table '{table_name}' for client '{client_name}' created/verified.")
 
     try:
         deleted_count = db.query(DynamicLiceModel).delete()
@@ -51,6 +51,8 @@ async def load_lice_data_from_xml_upload(db: Session, xml_file, client_name: str
         for item in items:
             agr_name = item.findtext('AGR_NAME', '')
             auth_obj = item.findtext('OBJECT', '')
+            logger.debug(f"Processing item for AGR_NAME: '{agr_name}', OBJECT: '{auth_obj}'")
+
             if not auth_obj:
                 agr_classif_check = item.findtext('AGR_CLASSIF')
                 if agr_name and agr_classif_check is not None:
@@ -114,6 +116,7 @@ async def load_auth_data_from_csv_upload(db: Session, csv_file, client_name: str
     table_name = DynamicAuthModel.__tablename__
     engine = db.bind
     ensure_table_exists(engine, DynamicAuthModel)
+    logger.debug(f"Dynamic model and table '{table_name}' for client '{client_name}' created/verified.")
 
     try:
         deleted_count = db.query(DynamicAuthModel).delete()
@@ -127,13 +130,19 @@ async def load_auth_data_from_csv_upload(db: Session, csv_file, client_name: str
     objects_to_load = []
     try:
         csv_content = csv_file.read()
+
         try:
             csv_text = BytesIO(csv_content).read().decode('utf-8-sig')
         except UnicodeDecodeError:
             try:
                 csv_text = BytesIO(csv_content).read().decode('latin-1')
+                logger.debug("Successfully decoded CSV content with 'utf-8-sig'.")
+
             except UnicodeDecodeError:
+
                 csv_text = BytesIO(csv_content).read().decode('cp1252')
+                logger.debug("Successfully decoded CSV content with 'cp1252'.")
+
         csv_reader = csv.reader(csv_text.splitlines())
         headers = ['agr_name', 'object', 'auth_name', 'field_name', 'auth_value_low', 'auth_value_high']
         next(csv_reader)
@@ -198,6 +207,7 @@ async def load_role_fiori_map_data_from_csv_upload(db: Session, csv_file, client
     table_name = DynamicRoleFioriDataModel.__tablename__
     engine = db.bind
     ensure_table_exists(engine, DynamicRoleFioriDataModel)
+    logger.debug(f"Dynamic model and table '{table_name}' for client '{client_name}' created/verified.")
 
     try:
         deleted_count = db.query(DynamicRoleFioriDataModel).delete()
@@ -286,6 +296,7 @@ async def load_master_derived_role_data_from_csv_upload(db: Session, csv_file, c
     table_name = DynamicMasterDerivedDataModel.__tablename__
     engine = db.bind
     ensure_table_exists(engine, DynamicMasterDerivedDataModel)
+    logger.debug(f"Dynamic model and table '{table_name}' for client '{client_name}' created/verified.")
 
     try:
         deleted_count = db.query(DynamicMasterDerivedDataModel).delete()
@@ -360,6 +371,7 @@ async def load_user_data_from_csv_upload(db: Session, csv_file, client_name: str
     table_name = DynamicUserDataModel.__tablename__
     engine = db.bind
     ensure_table_exists(engine, DynamicUserDataModel)
+    logger.debug(f"Dynamic model and table '{table_name}' for client '{client_name}' created/verified.")
 
     try:
         deleted_count = db.query(DynamicUserDataModel).delete()
@@ -442,6 +454,7 @@ async def load_user_role_map_data_from_csv_upload(db: Session, csv_file, client_
     table_name = DynamicUserRoleDataModel.__tablename__
     engine = db.bind
     ensure_table_exists(engine, DynamicUserRoleDataModel)
+    logger.debug(f"Dynamic model and table '{table_name}' for client '{client_name}' created/verified.")
 
     try:
         deleted_count = db.query(DynamicUserRoleDataModel).delete()
@@ -521,6 +534,7 @@ async def load_user_role_mapping_from_csv_upload(db: Session, csv_file, client_n
     table_name = DynamicUserRoleMappingModel.__tablename__
     engine = db.bind
     ensure_table_exists(engine, DynamicUserRoleMappingModel)
+    logger.debug(f"Dynamic model and table '{table_name}' for client '{client_name}' created/verified.")
 
     try:
         deleted_count = db.query(DynamicUserRoleMappingModel).delete()
@@ -585,51 +599,6 @@ async def load_user_role_mapping_from_csv_upload(db: Session, csv_file, client_n
         logger.warning(f"Failed loading User Role Mapping CSV data: {e}")
         raise DataLoaderError(f"Failed loading User Role Mapping CSV data: {e}")
 
-#
-# async def update_license_mapped_to_role_via_vlookup(db: Session, client_name: str, system_name: str):
-#     """
-#     Updates the LICENSE_MAPPED_TO_ROLE column in UserRoleMapping table using VLOOKUP logic.
-#     Looks up TARGET_CLASSIFICATION from role_lic_summary based on AGR_NAME match.
-#     Equivalent to: VLOOKUP(AGR_NAME, role_lic_summary!A:C, 3, 0)
-#     """
-#     logger.info(f"Starting VLOOKUP update for LICENSE_MAPPED_TO_ROLE for client: {client_name}, system: {system_name}")
-#
-#     # Get the dynamic models
-#     DynamicRoleLicSummaryModel = create_role_lic_summary_data_model(client_name, system_name)
-#     DynamicUserRoleMappingModel = create_user_role_mapping_data_model(client_name, system_name)
-#
-#     try:
-#         # Get all user role mapping records that need license mapping
-#         user_role_mappings = db.query(DynamicUserRoleMappingModel).all()
-#
-#         updated_count = 0
-#         for mapping in user_role_mappings:
-#             # Perform VLOOKUP: find TARGET_CLASSIFICATION for this AGR_NAME
-#             role_summary = db.query(DynamicRoleLicSummaryModel).filter(
-#                 DynamicRoleLicSummaryModel.ROLE == mapping.AGR_NAME
-#             ).first()
-#
-#             if role_summary and role_summary.TARGET_CLASSIFICATION:
-#                 # Update the LICENSE_MAPPED_TO_ROLE with found TARGET_CLASSIFICATION
-#                 mapping.LICENSE_MAPPED_TO_ROLE = role_summary.TARGET_CLASSIFICATION
-#                 updated_count += 1
-#             else:
-#                 # Handle case where no match found (like VLOOKUP #N/A)
-#                 mapping.LICENSE_MAPPED_TO_ROLE = 'NOT_FOUND'
-#
-#         db.commit()
-#
-#         msg = f"Successfully updated {updated_count} LICENSE_MAPPED_TO_ROLE records via VLOOKUP out of {len(user_role_mappings)} total records"
-#         logger.info(msg)
-#         print(msg)
-#         return {"message": msg, "records_updated": updated_count, "total_records": len(user_role_mappings)}
-#
-#     except Exception as e:
-#         db.rollback()
-#         logger.error(f"Failed updating LICENSE_MAPPED_TO_ROLE via VLOOKUP: {e}", exc_info=True)
-#         raise DataLoaderError(f"Failed updating LICENSE_MAPPED_TO_ROLE via VLOOKUP: {e}")
-
-
 async def load_role_lic_summary_data_from_csv_upload(db: Session, csv_file, client_name: str, system_name: str):
     """
     Parses Role License Summary CSV from a file-like object, ensures table exists, truncates, and loads data.
@@ -648,6 +617,7 @@ async def load_role_lic_summary_data_from_csv_upload(db: Session, csv_file, clie
     table_name = DynamicRoleLicSummaryModel.__tablename__
     engine = db.bind
     ensure_table_exists(engine, DynamicRoleLicSummaryModel)
+    logger.debug(f"Dynamic model and table '{table_name}' for client '{client_name}' created/verified.")
 
     try:
         deleted_count = db.query(DynamicRoleLicSummaryModel).delete()
@@ -735,6 +705,8 @@ async def create_and_populate_role_obj_lic_sim_table(
         create_lice_data_model,
         create_role_obj_lic_sim_model
     )
+    logger.info(f"Starting to create and populate license simulation table for client: '{client_name}', system: '{system_name}'.")
+
 
     # Get the source model (existing license table)
     SourceLiceModel = create_lice_data_model(client_name, system_name)
@@ -748,17 +720,20 @@ async def create_and_populate_role_obj_lic_sim_table(
 
     source_table_name = SourceLiceModel.__tablename__
     target_table_name = TargetSimModel.__tablename__
+    logger.debug(f"Source table '{source_table_name}' and target table '{target_table_name}' verified.")
 
     try:
         # Clear existing data in simulation table
         deleted_count = db.query(TargetSimModel).delete()
         print(f"Cleared {deleted_count} existing records from {target_table_name}")
+        logger.info(f"Cleared {deleted_count} existing records from '{target_table_name}'.")
 
         # Fetch all data from source table
         source_records = db.query(SourceLiceModel).all()
 
         if not source_records:
-            print(f"No data found in source table {source_table_name}")
+            msg = f"No data found in source table '{source_table_name}'. Simulation table will be empty."
+            logger.warning(msg)
             return {
                 "message": f"No data found in source table {source_table_name}",
                 "table_name": target_table_name,
@@ -789,7 +764,7 @@ async def create_and_populate_role_obj_lic_sim_table(
         db.commit()
 
         message = f"Successfully copied {len(sim_records)} records from {source_table_name} to {target_table_name}"
-        print(message)
+        logger.info(message)
 
         return {
             "message": message,
@@ -801,6 +776,7 @@ async def create_and_populate_role_obj_lic_sim_table(
         db.rollback()
         error_msg = f"Failed to create/populate simulation table: {str(e)}"
         print(error_msg)
+        logger.error(error_msg, exc_info=True)
         raise Exception(error_msg)
 
 
@@ -818,6 +794,7 @@ async def load_auth_obj_field_lic_data_from_csv_upload(db: Session, csv_file, cl
     table_name = DynamicAuthObjFieldLicData.__tablename__
     engine = db.bind
     ensure_table_exists(engine, DynamicAuthObjFieldLicData)
+    logger.debug(f"Dynamic model and table '{table_name}' for client '{client_name}' created/verified.")
 
     try:
         deleted_count = db.query(DynamicAuthObjFieldLicData).delete()

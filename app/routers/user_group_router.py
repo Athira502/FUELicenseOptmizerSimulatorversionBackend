@@ -2,7 +2,7 @@ import re # You might not need this if not used elsewhere in the router
 from typing import List, Dict
 from fastapi import APIRouter, Depends, HTTPException, Query # Import Query
 from sqlalchemy.orm import Session
-from app.core.logger import logger
+from app.core.logger import setup_logger, get_daily_log_filename
 from app.models.database import get_db, engine, Base
 from app.models.dynamic_models import create_user_data
 
@@ -11,7 +11,7 @@ router = APIRouter(
     prefix="/user_level",
     tags=["User Level"]
 )
-
+logger = setup_logger("app_logger")
 
 @router.get("/user-group", response_model=List[Dict[str, str]])
 async def fetch_user_group_data(

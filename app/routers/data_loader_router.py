@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import exists
 from sqlalchemy import inspect as sqla_inspect, desc, text
-from app.core.logger import logger
+from app.core.logger import setup_logger, get_daily_log_filename
 from app.models.database import get_db, engine
 from app.models.client_sys_release_version import  clientSysReleaseData
 from app.models.dynamic_models import create_role_lic_summary_data_model, create_user_role_mapping_data_model
@@ -20,24 +20,29 @@ router = APIRouter(
     prefix="/data",
     tags=["Data Loading"]
 )
-
+logger = setup_logger("app_logger")
 async def table_exists(db_engine, table_name: str) -> bool:
     """Checks if a table exists in the database."""
     inspector = sqla_inspect(db_engine)
     return inspector.has_table(table_name)
 
 async def create_table(db_engine, model_class):
+
     """Creates a table if it doesn't exist."""
     table_name = model_class.__tablename__
     if not await table_exists(db_engine, table_name):
+        logger.info(f"Creating table: {table_name}")
         print(f"Creating table: {table_name}")
         try:
             model_class.__table__.create(bind=db_engine)
+            logger.info(f"Table '{table_name}' created successfully.")
             print(f"Table '{table_name}' created successfully.")
         except Exception as e:
+            logger.error(f"Error creating table '{table_name}': {e}")
             print(f"Error creating table '{table_name}': {e}")
             raise  # Re-raise the exception after logging
     else:
+        logger.warning(f"Table '{table_name}' already exists.")
         print(f"Table '{table_name}' already exists.")
 
 async def ensure_client_system_info(db: Session, client_name: str, system_name: str, system_release_info: str):
@@ -51,6 +56,7 @@ async def ensure_client_system_info(db: Session, client_name: str, system_name: 
         (clientSysReleaseData.SYSTEM_RELEASE_INFO == system_release_info)
     )).scalar()
 
+
     if not exists_query:
         db_entry = clientSysReleaseData(
             CLIENT_NAME=client_name,
@@ -61,8 +67,10 @@ async def ensure_client_system_info(db: Session, client_name: str, system_name: 
         db.commit()
         db.refresh(db_entry)
         print(f"Added new client/system info: {client_name}, {system_name}, {system_release_info}")
+        logger.info(f"Added new client/system info: {client_name}, {system_name}, {system_release_info}")
     else:
         print(f"Client/system info already exists: {client_name}, {system_name}, {system_release_info}")
+        logger.info(f"Client/system info already exists: {client_name}, {system_name}, {system_release_info}")
 
 
 
@@ -78,6 +86,9 @@ async def load_license_data_endpoint(
     Loads license data from an uploaded XML file for a specific client and system.
     """
     print(f"Received request to load license data for client: {client_name}, system: {system_name}, release: {system_release_info}")
+    logger.info(
+        f"Received request to load license data for client: '{client_name}', system: '{system_name}', release: '{system_release_info}'")
+    logger.debug(f"Uploaded filename: '{xml_file.filename}', content type: '{xml_file.content_type}'")
     await ensure_client_system_info(db, client_name, system_name, system_release_info)
     filename = xml_file.filename
     log_entry = logData(
@@ -98,6 +109,7 @@ async def load_license_data_endpoint(
             system_name=system_name
         )
         print(f"License data load completed: {result}")
+        logger.info(f"License data load completed: {result}")
         db.query(logData).filter(logData.id == log_id).update(
             {"STATUS": "Success"})
         db.commit()
@@ -127,6 +139,10 @@ async def load_auth_data_endpoint(
     Loads authorization data from an uploaded CSV file for a specific client and system.
     """
     print(f"Received request to load auth data for client: {client_name}, system: {system_name}, release: {system_release_info}")
+    logger.info(
+        f"Received request to load-auth-data for client: '{client_name}', system: '{system_name}', release: '{system_release_info}'")
+    logger.debug(f"Uploaded filename: '{csv_file.filename}', content type: '{csv_file.content_type}'")
+
     await ensure_client_system_info(db, client_name, system_name, system_release_info)
     filename = csv_file.filename
     log_entry = logData(
@@ -147,6 +163,7 @@ async def load_auth_data_endpoint(
             system_name=system_name
         )
         print(f"Auth data load completed: {result}")
+        logger.info(f"Auth data load completed: {result}")
         db.query(logData).filter(logData.id == log_id).update(
             {"STATUS": "Success"})
         db.commit()
@@ -178,8 +195,13 @@ async def load_role_fiori_map_data_endpoint(
     """
     Loads authorization data from an uploaded CSV file for a specific client and system.
     """
+
     print(
         f"Received request to load Role fiori map data for client: {client_name}, system: {system_name}, release: {system_release_info}")
+    logger.info(
+        f"Received request to load_role_fiori_map_data for client: '{client_name}', system: '{system_name}', release: '{system_release_info}'")
+    logger.debug(f"Uploaded filename: '{csv_file.filename}', content type: '{csv_file.content_type}'")
+
     await ensure_client_system_info(db, client_name, system_name, system_release_info)
     filename = csv_file.filename
     log_entry = logData(
@@ -232,6 +254,10 @@ async def load_master_derived_role_data_endpoint(
     """
     print(
         f"Received request to load master derived role data for client: {client_name}, system: {system_name}, release: {system_release_info}")
+    logger.info(
+        f"Received request to load-master-derived-role-data for client: '{client_name}', system: '{system_name}', release: '{system_release_info}'")
+    logger.debug(f"Uploaded filename: '{csv_file.filename}', content type: '{csv_file.content_type}'")
+
     await ensure_client_system_info(db, client_name, system_name, system_release_info)
     filename = csv_file.filename
     log_entry = logData(
@@ -284,6 +310,10 @@ async def load_user_role_map_data_endpoint(
     """
     print(
         f"Received request to load user_role_map data for client: {client_name}, system: {system_name}, release: {system_release_info}")
+    logger.info(
+        f"Received request to load user_role_map data for client: '{client_name}', system: '{system_name}', release: '{system_release_info}'")
+    logger.debug(f"Uploaded filename: '{csv_file.filename}', content type: '{csv_file.content_type}'")
+
     await ensure_client_system_info(db, client_name, system_name, system_release_info)
     filename = csv_file.filename
     log_entry = logData(
@@ -335,6 +365,11 @@ async def load_user_data_endpoint(
     """
     print(
         f"Received request to load user_data for client: {client_name}, system: {system_name}, release: {system_release_info}")
+
+    logger.info(
+        f"Received request to load user data for client: '{client_name}', system: '{system_name}', release: '{system_release_info}'")
+    logger.debug(f"Uploaded filename: '{csv_file.filename}', content type: '{csv_file.content_type}'")
+
     await ensure_client_system_info(db, client_name, system_name, system_release_info)
     filename = csv_file.filename
     log_entry = logData(
@@ -378,6 +413,9 @@ async def get_latest_logs(db: Session = Depends(get_db)):
     """
     Retrieves the latest 10 log entries from the Z_FUE_LOG_FILE table.
     """
+    logger.info(
+        f"Request for fetching the new logs received")
+
     try:
         logs = (
             db.query(logData)
@@ -399,6 +437,8 @@ async def get_latest_logs(db: Session = Depends(get_db)):
                 }
                 for log in logs
             ]
+            logger.info(f"Log fteched")
+            logger.debug(f"Log fteched: {logs}")
         else:
             raise HTTPException(status_code=404, detail="No log entries found")
     except Exception as e:
@@ -417,6 +457,10 @@ async def load_role_lic_summary_data_endpoint(
     """
     Loads role license summary data from an uploaded CSV file for a specific client and system.
     """
+    logger.info(
+        f"Received request to load role-lic-summary data for client: '{client_name}', system: '{system_name}', release: '{system_release_info}'")
+    logger.debug(f"Uploaded filename: '{csv_file.filename}', content type: '{csv_file.content_type}'")
+
     print(
         f"Received request to load role lic summary data for client: {client_name}, system: {system_name}, release: {system_release_info}")
     await ensure_client_system_info(db, client_name, system_name, system_release_info)
@@ -440,6 +484,8 @@ async def load_role_lic_summary_data_endpoint(
             system_name=system_name
         )
         print(f"Role lic summary data load completed: {result}")
+        logger.info(f"Role lic summary data load completed")
+        logger.debug(f"Role lic summary data load completed: {result}")
         db.query(logData).filter(logData.id == log_id).update(
             {"STATUS": "Success"}
         )
@@ -473,6 +519,10 @@ async def load_user_role_mapping_data_endpoint(
     """
     print(
         f"Received request to load user role mapping data for client: {client_name}, system: {system_name}, release: {system_release_info}")
+    logger.info(
+        f"Received request to load user role mapping data for client: '{client_name}', system: '{system_name}', release: '{system_release_info}'")
+    logger.debug(f"Uploaded filename: '{csv_file.filename}', content type: '{csv_file.content_type}'")
+
     await ensure_client_system_info(db, client_name, system_name, system_release_info)
     filename = csv_file.filename
     log_entry = logData(
@@ -495,6 +545,8 @@ async def load_user_role_mapping_data_endpoint(
             system_name=system_name
         )
         print(f"User role mapping data load completed: {result}")
+        logger.info(f"User role mapping data load completed")
+        logger.debug(f"User role mapping data load completed: {result}")
 
         db.query(logData).filter(logData.id == log_id).update(
             {"STATUS": "Success"}
@@ -523,7 +575,10 @@ async def create_role_obj_lic_simulation_table_endpoint(
         system_release_info: str= Query(..., min_length=1),
         db: Session = Depends(get_db)
 ):
-
+    logger.info(
+        f"Received request to create_role_obj_lic_simulation_table for client: '{client_name}', system: '{system_name}', release: '{system_release_info}'")
+    logger.debug(
+        f"Received request to create_role_obj_lic_simulation_table for client: '{client_name}', system: '{system_name}', release: '{system_release_info}'")
     print(f"Creating simulation table for client: {client_name}, system: {system_name}")
 
     await ensure_client_system_info(db, client_name, system_name, system_release_info)
@@ -547,6 +602,7 @@ async def create_role_obj_lic_simulation_table_endpoint(
             client_name=client_name,
             system_name=system_name
         )
+        logger.info(f"created and populated role_obj_lic_sim_table")
 
         db.query(logData).filter(logData.id == log_id).update(
             {"STATUS": "Success"}
@@ -578,6 +634,10 @@ async def load_auth_obj_field_lic_data_endpoint(
     """
     Loads authorization data from an uploaded CSV file for a specific client and system.
     """
+    logger.info(
+        f"Received request to load-auth-obj-field-lic-data for client: '{client_name}', system: '{system_name}', release: '{system_release_info}'")
+    logger.debug(f"Uploaded filename: '{csv_file.filename}', content type: '{csv_file.content_type}'")
+
     print(
         f"Received request to load auth obj field lic data for client: {client_name}, system: {system_name}, release: {system_release_info}")
     await ensure_client_system_info(db, client_name, system_name, system_release_info)
@@ -600,6 +660,8 @@ async def load_auth_obj_field_lic_data_endpoint(
             system_name=system_name
         )
         print(f"Auth object field license data load completed: {result}")
+        logger.info(f"Auth object field license data load completed")
+        logger.debug(f"Auth object field license data load completed: {result}")
         db.query(logData).filter(logData.id == log_id).update(
             {"STATUS": "Success"})
         db.commit()
@@ -629,7 +691,11 @@ async def get_license_classification_pivot_table(
     """
     Generate a pivot table showing license classification distribution with user counts.
     Returns data similar to: Users | GB Advanced Use | GC Core Use | GD Self-Service Use | Total
+
     """
+    logger.info(
+        f"Generate a pivot table showing license classification distribution with user counts.")
+
     try:
         DynamicRoleLicSummaryModel = create_role_lic_summary_data_model(client_name, system_name)
         DynamicUserRoleMappingModel = create_user_role_mapping_data_model(client_name, system_name)
@@ -695,6 +761,8 @@ async def get_license_classification_pivot_table(
         """)
 
         result = db.execute(pivot_query).fetchone()
+        logger.info(f"received the result for  pivot table showing license classification distribution with user counts.")
+        logger.debug(f"received the result for  pivot table showing license classification distribution with user counts.,{result}")
 
         if not result:
             return {
@@ -742,7 +810,6 @@ async def get_license_classification_pivot_table(
 
         return {
             "pivot_table": pivot_table,
-
             "fue_summary": fue_summary,
             "client_name": client_name,
             "system_name": system_name
@@ -751,344 +818,3 @@ async def get_license_classification_pivot_table(
     except Exception as e:
         logger.error(f"Error generating pivot table: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error generating pivot table: {str(e)}")
-
-
-
-
-
-
-
-
-
-
-
-
-#
-# @router.post("/update-license-mapping-vlookup")
-# async def update_license_mapping_vlookup_endpoint(
-#         client_name: str,
-#         system_name: str,
-#         system_release_info: str,
-#         db: Session = Depends(get_db)
-# ):
-#     """
-#     Updates LICENSE_MAPPED_TO_ROLE column using VLOOKUP logic after user role mapping data is loaded.
-#     """
-#     print(
-#         f"Received request to update license mapping via VLOOKUP for client: {client_name}, system: {system_name}, release: {system_release_info}")
-#     await ensure_client_system_info(db, client_name, system_name, system_release_info)
-#
-#     log_entry = logData(
-#         FILENAME="VLOOKUP_UPDATE",
-#         CLIENT_NAME=client_name,
-#         SYSTEM_NAME=system_name,
-#         SYSTEM_RELEASE_INFO=system_release_info,
-#         STATUS="In Progress"
-#     )
-#     db.add(log_entry)
-#     db.commit()
-#     log_id = log_entry.id
-#
-#     try:
-#         result = await update_license_mapped_to_role_via_vlookup(
-#             db=db,
-#             client_name=client_name,
-#             system_name=system_name
-#         )
-#         print(f"License mapping VLOOKUP update completed: {result}")
-#         db.query(logData).filter(logData.id == log_id).update(
-#             {"STATUS": "Success"}
-#         )
-#         db.commit()
-#         return result
-#     except DataLoaderError as e:
-#         logger.error(f"Error updating license mapping via VLOOKUP: {e}")
-#         db.query(logData).filter(logData.id == log_id).update(
-#             {"STATUS": "Failed", "LOG_DATA": str(e)})
-#         db.commit()
-#         raise HTTPException(status_code=400, detail=str(e))
-#     except Exception as e:
-#         logger.error(f"Unexpected error updating license mapping via VLOOKUP: {e}")
-#         db.query(logData).filter(logData.id == log_id).update(
-#             {"STATUS": "Failed", "LOG_DATA": f"Internal server error: {e}"})
-#         db.commit()
-#         raise HTTPException(status_code=500, detail="Internal server error during license mapping VLOOKUP update")
-
-
-#
-# @router.post("/load-role-lic-summary-data")
-# async def load_role_lic_summary_data_endpoint(
-#         client_name: str,
-#         system_name: str,
-#         system_release_info: str,
-#         csv_file: UploadFile = File(...),
-#         db: Session = Depends(get_db)
-# ):
-#
-#     print(
-#         f"Received request to load role lic summary data for client: {client_name}, system: {system_name}, release: {system_release_info}")
-#     await ensure_client_system_info(db, client_name, system_name, system_release_info)
-#     filename = csv_file.filename
-#     log_entry = logData(
-#         FILENAME=filename,
-#         CLIENT_NAME=client_name,
-#         SYSTEM_NAME=system_name,
-#         SYSTEM_RELEASE_INFO=system_release_info,
-#         STATUS="In Progress",
-#     )
-#     db.add(log_entry)
-#     db.commit()
-#     log_id = log_entry.id
-#
-#     try:
-#         result = await load_role_lic_summary_data_from_csv_upload(
-#             db=db,
-#             csv_file=csv_file.file,
-#             client_name=client_name,
-#             system_name=system_name
-#         )
-#         print(f"Role lic summary data load completed: {result}")
-#
-#         print(f"🔍 Checking if VLOOKUP should be triggered after role data load...")
-#         try:
-#             await check_and_trigger_vlookup(db, client_name, system_name, log_id)
-#             print(f"✅ VLOOKUP check completed successfully")
-#         except Exception as vlookup_error:
-#             print(f"⚠️ VLOOKUP check failed but continuing: {vlookup_error}")
-#
-#         db.query(logData).filter(logData.id == log_id).update(
-#             {"STATUS": "Success"}
-#         )
-#         db.commit()
-#         return result
-#
-#     except DataLoaderError as e:
-#         logger.error(f"Error loading role lic summary data: {e}")
-#         db.query(logData).filter(logData.id == log_id).update(
-#             {"STATUS": "Failed", "LOG_DATA": str(e)})
-#         db.commit()
-#         raise HTTPException(status_code=400, detail=str(e))
-#     except Exception as e:
-#         logger.error(f"Unexpected error loading role lic summary data: {e}")
-#         db.query(logData).filter(logData.id == log_id).update(
-#             {"STATUS": "Failed", "LOG_DATA": f"Internal server error: {e}"})
-#         db.commit()
-#         raise HTTPException(status_code=500, detail="Internal server error during role lic summary data load")
-#
-#
-# @router.post("/load-user-role-mapping-data")
-# async def load_user_role_mapping_data_endpoint(
-#         client_name: str,
-#         system_name: str,
-#         system_release_info: str,
-#         csv_file: UploadFile = File(...),
-#         db: Session = Depends(get_db)
-# ):
-#     """
-#     Loads user role mapping data from an uploaded CSV file for a specific client and system.
-#     """
-#     print(
-#         f"Received request to load user role mapping data for client: {client_name}, system: {system_name}, release: {system_release_info}")
-#     await ensure_client_system_info(db, client_name, system_name, system_release_info)
-#     filename = csv_file.filename
-#     log_entry = logData(
-#         FILENAME=filename,
-#         CLIENT_NAME=client_name,
-#         SYSTEM_NAME=system_name,
-#         SYSTEM_RELEASE_INFO=system_release_info,
-#         STATUS="In Progress",
-#     )
-#     db.add(log_entry)
-#     db.commit()
-#     log_id = log_entry.id
-#
-#     try:
-#         # Call the correct function for user role mapping data
-#         result = await load_user_role_mapping_from_csv_upload(
-#             db=db,
-#             csv_file=csv_file.file,
-#             client_name=client_name,
-#             system_name=system_name
-#         )
-#         print(f"User role mapping data load completed: {result}")
-#
-#         # ✅ ADD THIS: Check if both tables are loaded and trigger VLOOKUP
-#         print(f"🔍 Checking if VLOOKUP should be triggered after user mapping data load...")
-#         try:
-#             await check_and_trigger_vlookup(db, client_name, system_name, log_id)
-#             print(f"✅ VLOOKUP check completed successfully")
-#         except Exception as vlookup_error:
-#             print(f"⚠️ VLOOKUP check failed but continuing: {vlookup_error}")
-#             # Don't fail the main operation if VLOOKUP fails
-#
-#         db.query(logData).filter(logData.id == log_id).update(
-#             {"STATUS": "Success"}
-#         )
-#         db.commit()
-#         return result
-#
-#     except DataLoaderError as e:
-#         logger.error(f"Error loading user role mapping data: {e}")
-#         db.query(logData).filter(logData.id == log_id).update(
-#             {"STATUS": "Failed", "LOG_DATA": str(e)})
-#         db.commit()
-#         raise HTTPException(status_code=400, detail=str(e))
-#     except Exception as e:
-#         logger.error(f"Unexpected error loading user role mapping data: {e}")
-#         db.query(logData).filter(logData.id == log_id).update(
-#             {"STATUS": "Failed", "LOG_DATA": f"Internal server error: {e}"})
-#         db.commit()
-#         raise HTTPException(status_code=500, detail="Internal server error during user role mapping data load")
-#
-#
-# async def check_and_trigger_vlookup(db: Session, client_name: str, system_name: str, current_log_id: int):
-#     """
-#     Checks if both required tables have data and triggers VLOOKUP if they do.
-#     """
-#     try:
-#         print(f"🔍 Starting VLOOKUP check for {client_name}-{system_name}")
-#         print(f"📝 Current log ID: {current_log_id}")
-#
-#         role_lic_summary_exists = await check_role_lic_summary_data_exists(db, client_name, system_name)
-#         user_role_mapping_exists = await check_user_role_mapping_data_exists(db, client_name, system_name)
-#
-#         print(f"📊 Table existence check:")
-#         print(f"   - Role Lic Summary exists: {role_lic_summary_exists}")
-#         print(f"   - User Role Mapping exists: {user_role_mapping_exists}")
-#
-#         if role_lic_summary_exists and user_role_mapping_exists:
-#             print(f"✅ Both tables loaded for {client_name}-{system_name}. Triggering VLOOKUP...")
-#
-#             db.query(logData).filter(logData.id == current_log_id).update(
-#                 {"LOG_DATA": "Data loaded successfully. Starting auto VLOOKUP..."}
-#             )
-#             db.commit()
-#
-#             vlookup_log_entry = logData(
-#                 FILENAME="AUTO_VLOOKUP_UPDATE",
-#                 CLIENT_NAME=client_name,
-#                 SYSTEM_NAME=system_name,
-#                 SYSTEM_RELEASE_INFO="",
-#                 STATUS="In Progress",
-#                 LOG_DATA="Auto-triggered VLOOKUP after both tables loaded"
-#             )
-#             db.add(vlookup_log_entry)
-#             db.commit()
-#             vlookup_log_id = vlookup_log_entry.id
-#
-#             print(f"📝 Created VLOOKUP log entry with ID: {vlookup_log_id}")
-#
-#             try:
-#                 print(f"🔄 Calling update_license_mapped_to_role_via_vlookup...")
-#
-#                 vlookup_result = await update_license_mapped_to_role_via_vlookup(
-#                     db=db,
-#                     client_name=client_name,
-#                     system_name=system_name
-#                 )
-#
-#                 print(f"✅ Auto VLOOKUP completed: {vlookup_result}")
-#
-#                 db.query(logData).filter(logData.id == vlookup_log_id).update(
-#                     {"STATUS": "Success", "LOG_DATA": f"Auto-triggered after data load. Result: {vlookup_result}"}
-#                 )
-#
-#                 db.query(logData).filter(logData.id == current_log_id).update(
-#                     {"LOG_DATA": f"Data loaded and VLOOKUP completed successfully. Result: {vlookup_result}"}
-#                 )
-#                 db.commit()
-#
-#                 print(f"✅ All logs updated successfully")
-#
-#             except Exception as vlookup_error:
-#                 print(f"❌ Error during auto VLOOKUP: {vlookup_error}")
-#                 print(f"❌ Error type: {type(vlookup_error)}")
-#                 import traceback
-#                 print(f"❌ Full traceback: {traceback.format_exc()}")
-#
-#                 # Update VLOOKUP log as failed
-#                 db.query(logData).filter(logData.id == vlookup_log_id).update(
-#                     {"STATUS": "Failed", "LOG_DATA": f"Auto VLOOKUP failed: {vlookup_error}"}
-#                 )
-#
-#                 # Update original log to show VLOOKUP failed but data load succeeded
-#                 db.query(logData).filter(logData.id == current_log_id).update(
-#                     {"LOG_DATA": f"Data loaded successfully but auto VLOOKUP failed: {vlookup_error}"}
-#                 )
-#                 db.commit()
-#
-#                 # Re-raise the error for visibility
-#                 raise vlookup_error
-#
-#         else:
-#             missing_tables = []
-#             if not role_lic_summary_exists:
-#                 missing_tables.append("Role License Summary")
-#             if not user_role_mapping_exists:
-#                 missing_tables.append("User Role Mapping")
-#
-#             print(f"⏳ Waiting for missing tables: {', '.join(missing_tables)}")
-#
-#             db.query(logData).filter(logData.id == current_log_id).update(
-#                 {"LOG_DATA": f"Data loaded. Waiting for {', '.join(missing_tables)} data before triggering VLOOKUP."}
-#             )
-#             db.commit()
-#
-#     except Exception as e:
-#         print(f"❌ Error checking tables for VLOOKUP trigger: {e}")
-#         print(f"❌ Error type: {type(e)}")
-#         import traceback
-#         print(f"❌ Full traceback: {traceback.format_exc()}")
-#
-#         # Update log but don't fail the main operation
-#         try:
-#             db.query(logData).filter(logData.id == current_log_id).update(
-#                 {"LOG_DATA": f"Data loaded but error checking for VLOOKUP trigger: {e}"}
-#             )
-#             db.commit()
-#         except:
-#             pass
-#
-#         raise e
-#
-#
-# async def check_role_lic_summary_data_exists(db: Session, client_name: str, system_name: str) -> bool:
-#     """
-#     Check if role license summary data exists for the given client and system.
-#     """
-#     try:
-#         print(f"🔍 Checking Role Lic Summary data for {client_name}-{system_name}")
-#
-#         DynamicRoleLicSummaryModel = create_role_lic_summary_data_model(client_name, system_name)
-#
-#         # Just check if the table has any data - don't filter by CLIENT_NAME/SYSTEM_NAME
-#         count = db.query(DynamicRoleLicSummaryModel).count()
-#
-#         print(f"📊 Role Lic Summary records found: {count}")
-#         return count > 0
-#
-#     except Exception as e:
-#         print(f"❌ Error checking role lic summary data existence: {e}")
-#         return False
-#
-#
-# async def check_user_role_mapping_data_exists(db: Session, client_name: str, system_name: str) -> bool:
-#     """
-#     Check if user role mapping data exists for the given client and system.
-#     """
-#     try:
-#         print(f"🔍 Checking User Role Mapping data for {client_name}-{system_name}")
-#
-#         DynamicUserRoleMappingModel = create_user_role_mapping_data_model(client_name, system_name)
-#
-#         # Just check if the table has any data - don't filter by CLIENT_NAME/SYSTEM_NAME
-#         count = db.query(DynamicUserRoleMappingModel).count()
-#
-#         print(f"📊 User Role Mapping records found: {count}")
-#         return count > 0
-#
-#     except Exception as e:
-#         print(f"❌ Error checking user role mapping data existence: {e}")
-#         return False
-
-

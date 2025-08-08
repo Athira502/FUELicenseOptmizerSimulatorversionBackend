@@ -1,22 +1,21 @@
-import uuid
 from typing import Dict, Any
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from app.core.logger import logger
+from app.core.logger import setup_logger
 from app.models.database import get_db
 from app.models.dynamic_models import (
     create_role_obj_lic_sim_model, create_simulation_result_data,
     create_user_role_mapping_data_model
 )
-from datetime import datetime
-
 from app.routers.data_loader_router import create_table
 
 router = APIRouter(
     prefix="/simulation_result",
     tags=["Simulation Result"]
 )
+
+logger = setup_logger("app_logger")
 
 LICENSE_RESTRICTIVENESS_ORDER = {
     'GB Advanced Use': 3,
@@ -36,7 +35,7 @@ def get_most_restrictive_license(licenses: list[str]) -> str | None:
 
     most_restrictive = None
     max_restrictiveness_score = -1
-
+    logger.info(f"calculating the most restrictive license")
     for lic in licenses:
         score = LICENSE_RESTRICTIVENESS_ORDER.get(lic, 0)  # Default to 0 for unknown licenses
         if score > max_restrictiveness_score:
@@ -57,8 +56,10 @@ async def get_simulation_license_classification_pivot_table(
     logger.info(f"Generating license classification pivot table for client: {client_name}, system: {system_name}")
 
     try:
+        logger.debug(f"Creating dynamic models for simulation results and user role mapping.")
         DynamicRoleObjLicSimModel = create_role_obj_lic_sim_model(client_name, system_name)
         DynamicUserRoleMappingModel = create_user_role_mapping_data_model(client_name, system_name)
+        logger.debug(f"Ensuring tables '{DynamicRoleObjLicSimModel.__tablename__}' and '{DynamicUserRoleMappingModel.__tablename__}' exist.")
         await create_table(db.bind, DynamicRoleObjLicSimModel)
         await create_table(db.bind, DynamicUserRoleMappingModel)
 
@@ -114,10 +115,11 @@ fue_summary AS (
 )
 SELECT * FROM fue_summary;
         """)
-
+        logger.debug(f"Executing pivot query:\n{pivot_query.text}")
         result = db.execute(pivot_query).fetchone()
 
         if not result:
+            logger.warning(f"No results found for pivot table query for client: {client_name}, system: {system_name}. Returning empty data.")
             return {
                 "pivot_table": {
                     "Users": {
@@ -136,7 +138,7 @@ SELECT * FROM fue_summary;
                 "client_name": client_name,
                 "system_name": system_name
             }
-
+        logger.info(f"Successfully generated pivot table. Total Users: {result.total_users}, Total FUE: {result.total_fue_required}")
         pivot_table = {
             "Users": {
                 "GB Advanced Use": result.gb_users,
@@ -167,7 +169,10 @@ SELECT * FROM fue_summary;
         raise HTTPException(status_code=500, detail=f"Error generating pivot table: {str(e)}")
 
 def get_next_simulation_id_for_table(db: Session, DynamicSimulationResultModel) -> str:
+    logger.debug(f"Determining next simulation ID for table: {DynamicSimulationResultModel.__tablename__}")
+
     try:
+        logger.debug("Querying for the latest simulation ID.")
         # Get the highest existing simulation ID from the current table
         latest_record = db.query(DynamicSimulationResultModel.SIMULATION_RUN_ID).filter(
             DynamicSimulationResultModel.SIMULATION_RUN_ID.like('SIM%')
@@ -178,152 +183,25 @@ def get_next_simulation_id_for_table(db: Session, DynamicSimulationResultModel) 
                 # Extract the number part and increment
                 current_num = int(latest_record[0][3:])  # Remove 'SIM' prefix
                 next_num = current_num + 1
+                logger.debug(f"Found latest simulation ID '{latest_record[0]}'. Next ID will be 'SIM{next_num}'.")
             except ValueError:
                 # If parsing fails, start from 100000
                 next_num = 100000
+                logger.warning(f"Could not parse simulation ID '{latest_record[0]}'. Falling back to 'SIM{next_num}'.")
+
         else:
             # No existing records, start from 100000
             next_num = 100000
+            logger.info(f"No existing simulation IDs found. Starting with 'SIM{next_num}'.")
+
 
         return f"SIM{next_num}"
 
     except Exception as e:
+        logger.error(f"Error in generating next simulation ID. Falling back to 'SIM100000'. Error: {e}", exc_info=True)
         # Fallback to default if any error occurs
         return "SIM100000"
 
-
-@router.post("/run-simulation/")
-async def run_simulation(
-        client_name: str,
-        system_name: str,
-        db: Session = Depends(get_db)
-) -> Dict[str, Any]:
-    """
-    Run the simulation, save results to simulation result table, and cleanup temporary tables.
-    This endpoint:
-    1. Runs the license classification simulation
-    2. Saves the FUE results and changed roles to simulation result table
-    3. Drops the temporary ROLE_OBJ_LIC_SIM table
-    """
-    logger.info(f"Running simulation for client: {client_name}, system: {system_name}")
-
-    try:
-        simulation_results = await get_simulation_license_classification_pivot_table(client_name, system_name, db)
-
-        DynamicRoleObjLicSimModel = create_role_obj_lic_sim_model(client_name, system_name)
-        DynamicSimulationResultModel = create_simulation_result_data(client_name, system_name)
-
-        from app.routers.data_loader_router import create_table
-        await create_table(db.bind, DynamicSimulationResultModel)
-
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        simulation_run_id = get_next_simulation_id_for_table(db,DynamicSimulationResultModel)
-
-        # simulation_run_id =f"SIM_REQ-{uuid.uuid4()}"
-        fue_summary = simulation_results.get("fue_summary", {})
-        total_fue_required = fue_summary.get("Total FUE Required", 0)
-
-
-        all_role_license_data = db.query(
-            DynamicRoleObjLicSimModel.AGR_NAME,
-            DynamicRoleObjLicSimModel.CLASSIF_S4,
-            DynamicRoleObjLicSimModel.NEW_SIM_LICE
-        ).all()
-
-        prev_licenses_by_role = {}
-        current_licenses_by_role = {}
-
-        for row in all_role_license_data:
-            role = row.AGR_NAME
-            prev_lic = row.CLASSIF_S4
-            curr_lic = row.NEW_SIM_LICE
-
-            if role not in prev_licenses_by_role:
-                prev_licenses_by_role[role] = []
-            if role not in current_licenses_by_role:
-                current_licenses_by_role[role] = []
-
-            if prev_lic:
-                prev_licenses_by_role[role].append(prev_lic)
-            if curr_lic:
-                current_licenses_by_role[role].append(curr_lic)
-
-        most_restrictive_prev_licenses = {
-            role: get_most_restrictive_license(licenses)
-            for role, licenses in prev_licenses_by_role.items()
-        }
-
-        most_restrictive_current_licenses = {
-            role: get_most_restrictive_license(licenses)
-            for role, licenses in current_licenses_by_role.items()
-        }
-
-        changed_roles_records = db.query(DynamicRoleObjLicSimModel).filter(
-            DynamicRoleObjLicSimModel.OPERATION.isnot(None)
-        ).all()
-
-        logger.info(f"Found {len(changed_roles_records)} changed roles to save (individual changes)")
-
-        saved_changes = 0
-        for role_change_record in changed_roles_records:
-            role_name = role_change_record.AGR_NAME
-            role_description = role_change_record.AGR_TEXT
-
-            derived_prev_license = most_restrictive_prev_licenses.get(role_name)
-            derived_current_license = most_restrictive_current_licenses.get(role_name)
-
-            change_record = DynamicSimulationResultModel(
-                SIMULATION_RUN_ID=simulation_run_id,
-                TIMESTAMP=timestamp,
-                FUE_REQUIRED=str(total_fue_required),
-                CLIENT_NAME=client_name,
-                SYSTEM_NAME=system_name,
-                ROLES_CHANGED=role_name,
-                ROLE_DESCRIPTION=role_description,
-                OBJECT=role_change_record.OBJECT,
-                FIELD=role_change_record.FIELD,
-                VALUE_LOW=role_change_record.LOW,
-                VALUE_HIGH=role_change_record.HIGH,
-                OPERATION=role_change_record.OPERATION,
-                PREV_LICENSE=derived_prev_license,
-                CURRENT_LICENSE=derived_current_license
-            )
-            db.add(change_record)
-            saved_changes += 1
-
-        db.commit()
-        logger.info(f"Saved {saved_changes} role changes to simulation result table")
-
-        try:
-            entry_count = db.query(DynamicRoleObjLicSimModel).count()
-
-            db.query(DynamicRoleObjLicSimModel).delete()
-            db.commit()
-
-            logger.info(
-                f"Successfully deleted {entry_count} entries from simulation table: {DynamicRoleObjLicSimModel.__tablename__}")
-
-        except Exception as delete_error:
-            logger.warning(
-                f"Error deleting entries from simulation table {DynamicRoleObjLicSimModel.__tablename__}: {str(delete_error)}")
-            db.rollback()
-
-        return {
-            "message": "Simulation completed successfully",
-            "simulation_results": simulation_results,
-            "saved_changes": saved_changes,
-            "fue_required": total_fue_required,
-            "timestamp": timestamp,
-            "simulation_run_id": simulation_run_id,
-            "client_name": client_name,
-            "system_name": system_name,
-            "cleanup_completed": True
-        }
-
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Error running simulation: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error running simulation: {str(e)}")
 
 @router.get("/simulation-results/")
 async def get_simulation_results(
@@ -337,21 +215,24 @@ async def get_simulation_results(
     logger.info(f"Retrieving simulation results for client: {client_name}, system: {system_name}")
 
     try:
+        logger.debug(f"Creating dynamic model for simulation results data.")
         DynamicSimulationResultModel = create_simulation_result_data(client_name, system_name)
         await create_table(db.bind, DynamicSimulationResultModel)
 
+        logger.debug(f"Querying all simulation results from table '{DynamicSimulationResultModel.__tablename__}'.")
         results = db.query(DynamicSimulationResultModel).order_by(
             DynamicSimulationResultModel.TIMESTAMP.desc(),DynamicSimulationResultModel.SIMULATION_RUN_ID.desc()
         ).all()
 
         if not results:
+            logger.warning(f"No simulation results found for client: '{client_name}', system: '{system_name}'.")
             return {
                 "message": "No simulation results found",
                 "client_name": client_name,
                 "system_name": system_name,
                 "results": []
             }
-
+        logger.info(f"Found {len(results)} records for client: '{client_name}', system: '{system_name}'.")
         simulation_runs = {}
         for result in results:
             sim_run_id = result.SIMULATION_RUN_ID
@@ -385,7 +266,7 @@ async def get_simulation_results(
 
         results_list = list(simulation_runs.values())
         results_list.sort(key=lambda x: x["timestamp"], reverse=True)
-
+        logger.info(f"Organized {len(results_list)} simulation runs for client: '{client_name}', system: '{system_name}'.")
         return {
             "message": f"Found {len(results_list)} simulation runs",
             "client_name": client_name,
