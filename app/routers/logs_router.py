@@ -51,29 +51,6 @@ def extract_date_from_filename(filename: str) -> datetime:
     return datetime.now()  # Final fallback
 
 
-# def extract_date_from_filename(filename: str) -> datetime:
-#     """Extract date from filename format: clientname-systemid-YYYYMMDD-HHMMSS.log"""
-#     try:
-#         # Extract date part from filename
-#         parts = filename.replace('.log', '').split('-')
-#         if len(parts) >= 4:
-#             date_part = parts[-2]  # YYYYMMDD
-#             time_part = parts[-1]  # HHMMSS
-#
-#             # Parse date and time
-#             date_str = f"{date_part}-{time_part}"
-#             return datetime.strptime(date_str, "%Y%m%d-%H%M%S")
-#
-#     except (ValueError, IndexError) as e:
-#         logger.warning(f"Error parsing date from filename {filename}: {e}. Falling back to file modification time.")
-#         print(f"Error parsing date from filename {filename}: {e}")
-#         # Fallback to file modification time
-#         file_path = os.path.join(LOG_DIR, filename)
-#         if os.path.exists(file_path):
-#             return datetime.fromtimestamp(os.path.getmtime(file_path))
-#     logger.warning(f"Could not extract date from filename {filename}. Returning current time.")
-#     return datetime.now()  # Fallback
-
 
 @router.get("/")
 def get_logs(filename: str = Query(None)):

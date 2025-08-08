@@ -162,7 +162,6 @@ async def get_specific_role_details(
             detail="Internal server error"
         )
 
-
 @router.post("/apply-simulation-changes/")
 async def apply_simulation_changes(
         client_name: str,
@@ -175,19 +174,17 @@ async def apply_simulation_changes(
     Creates initial entries for each change in the payload,
     then processes changes in background
     """
-    logger.info(f"Received request to apply simulation changes for client: '{client_name}', system: '{system_name}'. Number of changes: {len(changes)}")
+    logger.info(
+        f"Received request to apply simulation changes for client: '{client_name}', system: '{system_name}'. Number of changes: {len(changes)}")
     try:
         logger.debug("Creating dynamic models and ensuring table exists.")
-        # 1. Setup models
         ResultModel = create_simulation_result_data(client_name, system_name)
         await create_table(db.bind, ResultModel)
 
-        # 2. Create initial records - one per change
         sim_id = get_next_simulation_id_for_table(db, ResultModel)
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         logger.debug(f"Generated new simulation ID: '{sim_id}'. Creating initial database records.")
 
-        # Create a record for each change
         for change in changes:
             record = ResultModel(
                 SIMULATION_RUN_ID=sim_id,
@@ -212,9 +209,9 @@ async def apply_simulation_changes(
         logger.info(f"Created {len(changes)} initial records for simulation run '{sim_id}'.")
 
         logger.info(f"Adding background task to process simulation run '{sim_id}'.")
-        # 3. Start background processing
+        # 3. Start background processing with sync wrapper
         background_tasks.add_task(
-            process_simulation_background,
+            process_simulation_background_sync,
             client_name, system_name, sim_id, changes
         )
 
@@ -230,6 +227,37 @@ async def apply_simulation_changes(
         db.rollback()
         logger.error(f"Simulation initiation failed: {str(e)}")
         raise HTTPException(500, "Simulation initialization failed")
+
+
+def process_simulation_background_sync(
+        client_name: str,
+        system_name: str,
+        sim_id: str,
+        changes: List[SimulationChangePayload]
+):
+    """
+    Synchronous wrapper for the async background processing function.
+    This ensures BackgroundTasks can properly handle the task without blocking.
+    """
+    import asyncio
+    logger.info(f"Starting synchronous wrapper for background simulation processing for run '{sim_id}'...")
+
+    try:
+        # Create new event loop for this background task
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        # Run the async function in the new event loop
+        loop.run_until_complete(
+            process_simulation_background(client_name, system_name, sim_id, changes)
+        )
+    except Exception as e:
+        logger.error(f"Error in background task wrapper: {str(e)}")
+    finally:
+        try:
+            loop.close()
+        except:
+            pass
 
 
 async def process_simulation_background(
@@ -343,6 +371,7 @@ async def process_simulation_background(
     finally:
         db.close()
 
+
 async def apply_comprehensive_changes(
         client_name: str,
         system_name: str,
@@ -443,7 +472,8 @@ async def apply_comprehensive_changes(
 
 def get_license_for_add_operation(authorization_object: str, field: str, value_low: str, db: Session, AuthModel) -> str:
     """Get license for add operations"""
-    logger.info(f"Attempting to fetch license for authorization_object='{authorization_object}', field='{field}', value_low='{value_low}'")
+    logger.info(
+        f"Attempting to fetch license for authorization_object='{authorization_object}', field='{field}', value_low='{value_low}'")
 
     try:
         auth_records = db.query(AuthModel).filter(

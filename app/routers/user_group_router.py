@@ -48,22 +48,3 @@ async def fetch_license_type_by_user_group(
         raise HTTPException(status_code=500, detail=f"Failed to fetch license_types for user_group {user_group_name}: {e}")
 
 
-
-#
-# @router.get("/{user}/licenses", response_model=List[Dict[str, str]])
-# async def fetchlicense_type_acc_user_id(
-#     user: str,
-#     client_name: str = Query(..., description="Client Name (e.g., FUJI)"),
-#     system_id: str = Query(..., description="System ID (e.g., S4HANA)"),
-#     db: Session = Depends(get_db)
-# ):
-#     """Fetches unique user group names for a specific client and system."""
-#     try:
-#         DynamicUserDataModel = create_user_data(client_name, system_id)
-#         license_types = db.query(DynamicUserDataModel.TARGET_LICENSE) .filter(DynamicUserDataModel.USER==user) .distinct().all()
-#         return [{"license_types": lic_type.TARGET_CLASSIFICATION} for lic_type in license_types]
-#     except Exception as e:
-#         logger.error(
-#             f"Error fetching license_types for user {user} in client {client_name}, system {system_id}: {e}")
-#         raise HTTPException(status_code=500,
-#                             detail=f"Failed to fetch license_types for user {user}: {e}")

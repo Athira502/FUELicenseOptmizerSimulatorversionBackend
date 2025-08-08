@@ -241,9 +241,20 @@ async def get_simulation_results(
                     "simulation_run_id": sim_run_id,
                     "timestamp": result.TIMESTAMP,
                     "fue_required": result.FUE_REQUIRED,
+                    "status": result.STATUS,
                     "changes": [],
                     "summary": None
                 }
+            if result.STATUS and result.STATUS != simulation_runs[sim_run_id]["status"]:
+                # Priority: Failed > In Progress > Completed
+                current_status = simulation_runs[sim_run_id]["status"]
+                new_status = result.STATUS
+
+                if (new_status == "Failed" or
+                        (new_status == "In Progress" and current_status == "Completed") or
+                        (new_status == "Processing Changes" and current_status == "Completed")):
+                    simulation_runs[sim_run_id]["status"] = new_status
+
 
             if result.OPERATION == "SUMMARY":
                 simulation_runs[sim_run_id]["summary"] = {
@@ -261,7 +272,8 @@ async def get_simulation_results(
                     "value_high": result.VALUE_HIGH,
                     "operation": result.OPERATION,
                     "prev_license":result.PREV_LICENSE,
-                    "current_license":result.CURRENT_LICENSE
+                    "current_license":result.CURRENT_LICENSE,
+                    "status": result.STATUS
                 })
 
         results_list = list(simulation_runs.values())
